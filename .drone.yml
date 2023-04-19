@@ -1,0 +1,44 @@
+---
+kind: pipeline
+name: build-image-custom
+type: docker
+clone:
+  disable: true
+trigger:
+  event:
+  - custom
+
+environment:
+  OPENMINA_BRANCH: openmina-berkeley
+
+steps:
+
+- name: clone
+  image: alpine/git
+  commands:
+  - git clone $${MINA_REPO:-$${DRONE_REPO_LINK}} --depth 1 -b $${MINA_BRANCH:-$${DRONE_BRANCH}} .
+
+- name: prepare-dockerfiles
+  image: busybox
+  commands:
+  - wget https://github.com/openmina/mina/raw/$${OPENMINA_BRANCH}/dockerfiles/stages/99-openmina-tail -O dockerfiles/stages/99-openmina-tail
+  - sed -i -e "s/zlib1g-dev/zlib1g-dev jq/" dockerfiles/stages/1-build-deps
+  - for f in 1-build-deps 2-opam-deps 3-builder 99-openmina-tail; do cat dockerfiles/stages/$$f; done > ./dockerfiles/stages/merged
+  - echo "!dockerfiles/scripts/healthcheck-utilities.sh" >> .dockerignore
+
+- name: publish-image
+  image: plugins/docker
+  settings:
+    build_args:
+    - MINA_BRANCH=${MINA_BRANCH:-develop}
+    - MINA_REPO=${MINA_REPO:-https://github.com/Minaprotocol/mina}
+    dockerfile: ./dockerfiles/stages/merged
+    password:
+      from_secret: docker_hub_password
+    repo: openmina/mina
+    tags:
+    - ${MINA_BRANCH:-develop}-${DRONE_COMMIT_SHA:0:8}
+    - ${MINA_BRANCH:-develop}-latest
+    username:
+      from_secret: docker_hub_username
+    cache_from: ${MINA_BRANCH:-develop}-${DRONE_COMMIT_SHA:0:8}
