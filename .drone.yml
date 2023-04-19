@@ -9,7 +9,7 @@ trigger:
   - custom
 
 environment:
-  OPENMINA_BRANCH: openmina-berkeley
+  OPENMINA_BRANCH: openmina-legacy-snark-workers
 
 steps:
 
@@ -37,7 +37,7 @@ steps:
       from_secret: docker_hub_password
     repo: openmina/mina
     tags:
-    - ${MINA_BRANCH:-develop}-${DRONE_BUILD}
+    - ${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
     - ${MINA_BRANCH:-develop}-latest
     username:
       from_secret: docker_hub_username
@@ -88,7 +88,7 @@ steps:
 - name: clone
   image: alpine/git
   commands:
-  - git clone $${OPENMINA_REPO:-https://github.com/openmina/mina} --depth 1 -b $${OPENMINA_BRANCH:-openmina-berkeley} .
+  - git clone $${OPENMINA_REPO:-https://github.com/openmina/mina} --depth 1 -b $${OPENMINA_BRANCH:-openmina-legacy-snark-workers} .
 
 - name: prepare-kubeconfig
   image: alpine/k8s:1.26.1
@@ -139,7 +139,7 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD}
+  - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
   - $${OM}/deploy.sh deploy --seeds --force -- $${HELM_ARGS}
 
 - name: seeds-are-ready
@@ -162,15 +162,15 @@ steps:
 - name: log-snarker
   <<: *log
   environment:
-    NAME: snarker001
+    NAME: snarker
 
 - name: deploy-nodes
   image: alpine/k8s:1.26.1
   environment:
     KUBECONFIG: kube-config
   commands:
-  - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD}
-  - $${OM}/deploy.sh deploy --producers --nodes --frontend --force -- --set=snarkWorkersConfig.count=8 $${HELM_ARGS}
+  - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
+  - $${OM}/deploy.sh deploy --producers --snark-workers --nodes --frontend --force -- $${HELM_ARGS}
 
 - name: testnet-is-ready
   image: alpine/k8s:1.26.1
