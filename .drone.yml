@@ -1,6 +1,6 @@
 ---
 kind: pipeline
-name: build-image-custom
+name: build-image
 type: docker
 clone:
   disable: true
@@ -37,8 +37,145 @@ steps:
       from_secret: docker_hub_password
     repo: openmina/mina
     tags:
-    - ${MINA_BRANCH:-develop}-${DRONE_COMMIT_SHA:0:8}
+    - ${MINA_BRANCH:-develop}-${DRONE_BUILD}
     - ${MINA_BRANCH:-develop}-latest
     username:
       from_secret: docker_hub_username
-    cache_from: ${MINA_BRANCH:-develop}-${DRONE_COMMIT_SHA:0:8}
+    cache_from: ${MINA_BRANCH:-develop}-latest
+
+---
+kind: pipeline
+name: deploy-testnet
+type: docker
+clone:
+  disable: true
+trigger:
+  event:
+  - custom
+depends_on:
+- build-image
+
+
+environment:
+  # path to openmina tooling
+  OM: helm/openmina-config
+  # target height to wait for after deployment
+  TARGET_HEIGHT: 8
+  # resource to wait for status when deploying Mina seeds
+  SEEDS_WAIT_RESOURCE: deployment/seed1
+  # timeout to wait when deploying Mina seeds
+  SEEDS_WAIT_TIMEOUT: 10m
+  # resource to wait for status when deploying Mina nodes
+  NODES_WAIT_RESOURCE: deployment/node1
+  # timeout to wait when deploying Mina nodes
+  NODES_WAIT_TIMEOUT: 15m
+  # retries to check all nodes to be at the same level
+  HEIGHT_WAIT_RETRIES: 20
+  # period to wait before retrying
+  HEIGHT_WAIT_PERIOD: 15
+
+defs:
+- &log
+  image: alpine/k8s:1.26.1
+  detach: true
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - while ! kubectl logs deployment/$${NAME} --container mina --follow; do echo "waiting for $${NAME} to start..."; sleep 10; done
+
+steps:
+
+- name: clone
+  image: alpine/git
+  commands:
+  - git clone $${OPENMINA_REPO:-https://github.com/openmina/mina} --depth 1 -b $${OPENMINA_BRANCH:-openmina-berkeley} .
+
+- name: prepare-kubeconfig
+  image: alpine/k8s:1.26.1
+  environment:
+    DRONE_KUBECONFIG:
+      from_secret: k8s_config
+    KUBECONFIG: kube-config
+  commands:
+  - umask 0077
+  - echo "$DRONE_KUBECONFIG" > $${KUBECONFIG}
+  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet-daily}
+
+- name: deployment-info
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - PORT="$$($${OM}/kube-utils.sh frontend-port $${NAMESPACE:-testnet-daily})"
+  - 'echo "Frontend: http://1.k8.openmina.com:$PORT"'
+  - 'echo "Namespace: $${NAMESPACE:-testnet-daily}"'
+
+- name: delete-old-testnet
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - $${OM}/deploy.sh delete --all --force
+  - sleep 10
+  - |
+    PODS="$$($${OM}/kube-utils.sh mina-pods)"
+    if [ -n "$${PODS}" ]; then
+        echo "Workaround for pods left running, force-delete pods $$PODS"
+        kubectl delete --force pods $${PODS} || true
+    fi
+
+- name: prepare-deamon-json
+  image: alpine/k8s:1.26.1
+  commands:
+  - $${OM}/generate-conf-file.sh --slot-duration=$${SLOT_DURATION:-180} $${SLOTS_PER_EPOCH:+--slots-per-epoch=$${SLOTS_PER_EPOCH}} > $${OM}/resources/daemon.json
+
+- name: log-seed
+  <<: *log
+  environment:
+    NAME: seed1
+
+- name: deploy-seeds
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD}
+  - $${OM}/deploy.sh deploy --seeds --force -- $${HELM_ARGS}
+
+- name: seeds-are-ready
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - kubectl wait $${SEEDS_WAIT_RESOURCE} --for=condition=Available --timeout=$${SEEDS_WAIT_TIMEOUT}
+
+- name: log-node
+  <<: *log
+  environment:
+    NAME: node1
+
+- name: log-producer
+  <<: *log
+  environment:
+    NAME: node1
+
+- name: log-snarker
+  <<: *log
+  environment:
+    NAME: snarker001
+
+- name: deploy-nodes
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD}
+  - $${OM}/deploy.sh deploy --producers --nodes --frontend --force -- --set=snarkWorkersConfig.count=8 $${HELM_ARGS}
+
+- name: testnet-is-ready
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - $${OM}/kube-utils.sh mina-testnet-available $${NODES_WAIT_TIMEOUT}
+  - $${OM}/kube-utils.sh mina-testnet-same-height $${HEIGHT_WAIT_RETRIES} $${HEIGHT_WAIT_PERIOD}
