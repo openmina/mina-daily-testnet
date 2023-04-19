@@ -16,10 +16,10 @@ steps:
 - name: clone
   image: alpine/git
   commands:
-  - git clone $${MINA_REPO:-$${DRONE_REPO_LINK}} --depth 1 -b $${MINA_BRANCH:-$${DRONE_BRANCH}} .
+  - git clone $${MINA_REPO:-https://github.com/MinaProtocol/mina} --depth 1 -b $${MINA_BRANCH:-develop} .
 
 - name: prepare-dockerfiles
-  image: busybox
+  image: busybox:latest
   commands:
   - wget https://github.com/openmina/mina/raw/$${OPENMINA_BRANCH}/dockerfiles/stages/99-openmina-tail -O dockerfiles/stages/99-openmina-tail
   - sed -i -e "s/zlib1g-dev/zlib1g-dev jq/" dockerfiles/stages/1-build-deps
@@ -31,7 +31,7 @@ steps:
   settings:
     build_args:
     - MINA_BRANCH=${MINA_BRANCH:-develop}
-    - MINA_REPO=${MINA_REPO:-https://github.com/Minaprotocol/mina}
+    - MINA_REPO=${MINA_REPO:-https://github.com/MinaProtocol/mina}
     dockerfile: ./dockerfiles/stages/merged
     password:
       from_secret: docker_hub_password
