@@ -41,7 +41,7 @@ steps:
     - ${MINA_BRANCH:-develop}-latest
     username:
       from_secret: docker_hub_username
-    cache_from: ${MINA_BRANCH:-develop}-latest
+    cache_from: openmina/mina:${MINA_BRANCH:-develop}-latest
 
 ---
 kind: pipeline
