@@ -173,3 +173,53 @@ steps:
   commands:
   - $${OM}/kube-utils.sh mina-testnet-available $${NODES_WAIT_TIMEOUT}
   - $${OM}/kube-utils.sh mina-testnet-same-height $${HEIGHT_WAIT_RETRIES} $${HEIGHT_WAIT_PERIOD}
+---
+
+kind: pipeline
+name: run-zkapps
+type: docker
+clone:
+  disable: true
+depends_on: [ deploy-testnet ]
+
+environment:
+  # path to openmina tooling
+  OM: helm/openmina-config
+  RELEASE_NAME: zkapps-drone-${DRONE_BUILD_NUMBER}
+  SUFFIX: ${DRONE_BUILD_NUMBER}
+
+steps:
+
+- name: clone
+  image: alpine/git
+  commands:
+  - git clone $${OPENMINA_REPO:-https://github.com/openmina/mina} --depth 1 -b $${OPENMINA_BRANCH:-openmina-legacy-snark-workers} .
+
+- name: configure
+  image: alpine/k8s:1.26.1
+  environment:
+    DRONE_KUBECONFIG:
+      from_secret: k8s_config
+    KUBECONFIG: kube-config
+  commands:
+  - umask 0077
+  - echo "$DRONE_KUBECONFIG" > "$KUBECONFIG"
+  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet-default}
+
+
+- name: start
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - helm install $${RELEASE_NAME} helm/zkapps --set=job=$${ZK_JOB:-sign-proof-x3} --set=count=$${ZK_COUNT:-64} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX}
+  - |
+    for t in $(seq 10); do
+        kubectl logs jobs/zkapp-worker-$${SUFFIX} --container=worker --follow && exit
+        echo "Waiting for worker container..."
+        sleep 5
+    done
+    echo "Failed to wait for worker container"
+    exit
+  - $${OM}/kube-utils.sh wait-for-job-status job/zkapp-worker-$${SUFFIX} 60m
+  - helm delete $${RELEASE_NAME}
