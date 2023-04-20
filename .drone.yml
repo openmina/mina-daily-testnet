@@ -38,7 +38,7 @@ steps:
     - ${MINA_BRANCH:-develop}-latest
     username:
       from_secret: docker_hub_username
-    cache_from: openmina/mina:${MINA_BRANCH:-develop}-latest
+    # cache_from: openmina/mina:${MINA_BRANCH:-develop}-latest
 
 ---
 kind: pipeline
@@ -93,16 +93,16 @@ steps:
   commands:
   - umask 0077
   - echo "$DRONE_KUBECONFIG" > $${KUBECONFIG}
-  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet-daily}
+  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet}
 
 - name: deployment-info
   image: alpine/k8s:1.26.1
   environment:
     KUBECONFIG: kube-config
   commands:
-  - PORT="$$($${OM}/kube-utils.sh frontend-port $${NAMESPACE:-testnet-daily})"
+  - PORT="$$($${OM}/kube-utils.sh frontend-port $${NAMESPACE:-testnet})"
   - 'echo "Frontend: http://1.k8.openmina.com:$PORT"'
-  - 'echo "Namespace: $${NAMESPACE:-testnet-daily}"'
+  - 'echo "Namespace: $${NAMESPACE:-testnet}"'
 
 - name: delete-old-testnet
   image: alpine/k8s:1.26.1
@@ -204,7 +204,7 @@ steps:
   commands:
   - umask 0077
   - echo "$DRONE_KUBECONFIG" > "$KUBECONFIG"
-  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet-daily}
+  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet}
 
 
 - name: start
@@ -212,7 +212,7 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install $${RELEASE_NAME} helm/zkapps --set=job=$${ZK_JOB:-sign-proof-x3} --set=count=$${ZK_COUNT:-64} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX}
+  - helm install $${RELEASE_NAME} helm/zkapps --set=job=$${ZK_JOB:-sign-x4} --set=count=$${ZK_COUNT:-512} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX}
   - |
     for t in $(seq 10); do
         kubectl logs jobs/zkapp-worker-$${SUFFIX} --container=worker --follow && exit
