@@ -4,9 +4,6 @@ name: build-image
 type: docker
 clone:
   disable: true
-trigger:
-  event:
-  - custom
 
 environment:
   OPENMINA_BRANCH: openmina-legacy-snark-workers
@@ -49,9 +46,6 @@ name: deploy-testnet
 type: docker
 clone:
   disable: true
-trigger:
-  event:
-  - custom
 depends_on:
 - build-image
 
