@@ -204,7 +204,7 @@ steps:
   commands:
   - umask 0077
   - echo "$DRONE_KUBECONFIG" > "$KUBECONFIG"
-  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet-default}
+  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet-daily}
 
 
 - name: start
