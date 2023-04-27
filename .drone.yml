@@ -42,7 +42,7 @@ steps:
 
 ---
 kind: pipeline
-name: deploy-testnet
+name: deploy-to-cluster
 type: docker
 clone:
   disable: true
@@ -181,7 +181,7 @@ name: run-zkapps
 type: docker
 clone:
   disable: true
-depends_on: [ deploy-testnet ]
+depends_on: [ deploy-to-cluster ]
 
 environment:
   # path to openmina tooling
