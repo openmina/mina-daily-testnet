@@ -165,7 +165,6 @@ steps:
   commands:
   - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
   - $${OM}/deploy.sh deploy --producers --snark-workers --nodes --force -- $${HELM_ARGS}
-  - $${OM}/update-frontend.sh -- --set=isVanilla=true
 
 - name: testnet-is-ready
   image: alpine/k8s:1.26.1
