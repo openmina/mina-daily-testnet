@@ -224,3 +224,56 @@ steps:
     exit
   - $${OM}/kube-utils.sh wait-for-job-status job/zkapp-worker-$${SUFFIX} 60m
   - helm delete $${RELEASE_NAME}
+
+---
+kind: pipeline
+name: finish
+type: docker
+clone:
+  disable: true
+depends_on: [ run-zkapps ]
+
+environment:
+  # path to openmina tooling
+  OM: helm/openmina-config
+  # global slot to wait force
+  MAX_HEIGHT: 20
+
+steps:
+
+- name: clone
+  image: alpine/git
+  commands:
+  - git clone $${OPENMINA_REPO:-https://github.com/openmina/mina} --depth 1 -b $${OPENMINA_BRANCH:-openmina-legacy-snark-workers} .
+
+- name: configure
+  image: alpine/k8s:1.26.1
+  environment:
+    DRONE_KUBECONFIG:
+      from_secret: k8s_config
+    KUBECONFIG: kube-config
+  commands:
+  - umask 0077
+  - echo "$DRONE_KUBECONFIG" > "$KUBECONFIG"
+  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet}
+
+- name: wait-for-slot
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - |
+    while true; do
+      HEIGHT=$$($${OM}/kube-utils.sh mina-node-chain-height deploy/node1)
+      if [ -n "$HEIGHT" ] && [ "$HEIGHT" -ge "$MAX_HEIGHT" ]; then
+        echo "Reached height $MAX_HEIGHT"
+        exit
+      fi
+      echo "Height $HEIGHT is lower than $MAX_HEIGHT"
+      sleep 20
+    done
+
+- name: report-finish
+  image: busybox
+  commands:
+  - echo "Done"
