@@ -34,11 +34,11 @@ steps:
       from_secret: docker_hub_password
     repo: openmina/mina
     tags:
-    - ${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
-    - ${MINA_BRANCH:-develop}-latest
+    - mina-daily-${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
+    - mina-daily-${MINA_BRANCH:-develop}-latest
     username:
       from_secret: docker_hub_username
-    # cache_from: openmina/mina:${MINA_BRANCH:-develop}-latest
+    cache_from: ${CACHE_IMAGE}
 
 ---
 kind: pipeline
@@ -133,7 +133,7 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
+  - export MINA_IMAGE=openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
   - $${OM}/deploy.sh deploy --seeds --force -- $${HELM_ARGS}
 
 - name: seeds-are-ready
@@ -163,7 +163,7 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - export MINA_IMAGE=openmina/mina:$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
+  - export MINA_IMAGE=openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
   - $${OM}/deploy.sh deploy --producers --snark-workers --nodes --force -- $${HELM_ARGS}
   - $${OM}/update-frontend.sh -- --set=isVanilla=true
 
@@ -184,21 +184,71 @@ clone:
   disable: true
 depends_on: [ deploy-to-cluster ]
 
+environment:
+  # retries to check all nodes to be at the same level
+  HEIGHT_WAIT_RETRIES: 20
+  # period to wait before retrying
+  HEIGHT_WAIT_PERIOD: 15
+  NODES: "--nodes=8 --snarkers=1 --prods=3 --prod0s=3 --seeds=2"
+  OM: helm/openmina-config
+
 steps:
+
+- name: clone
+  image: alpine/git
+  commands:
+  - git clone $${OPENMINA_REPO:-https://github.com/openmina/mina} --depth 1 -b $${OPENMINA_BRANCH:-openmina-legacy-snark-workers} .
+
+- name: configure
+  image: alpine/k8s:1.26.1
+  environment:
+    DRONE_KUBECONFIG:
+      from_secret: k8s_config
+    KUBECONFIG: kube-config
+  commands:
+  - umask 0077
+  - echo "$DRONE_KUBECONFIG" > "$KUBECONFIG"
+  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet}
+
+- name: pre-split
+  image: openmina/mina-network-debugger:latest
+  environment:
+    URL: http://1.k8.openmina.com:31308
+  commands:
+  - sleep  10 && topology-tool --url=$URL $$NODES show-graph --expected-components 1
 
 - name: split
   image: openmina/mina-network-debugger:latest
   environment:
     URL: http://1.k8.openmina.com:31308
   commands:
-  - if [ -n "$${SPLIT_SKIP}" ]; then exit; fi
-  - NODES="--nodes=8 --snarkers=1 --prods=3 --prod0s=3 --seeds=2"
-  - sleep  10 && topology-tool --url=$URL $$NODES show-graph --expected-components 1
   - sleep  10 && topology-tool --url=$URL $$NODES enable-firewall
   - sleep  90 && topology-tool --url=$URL $$NODES show-graph --expected-components 2
-  - sleep $$(($${SPLIT_DURATION:-30} * 60)) && topology-tool --url=$URL $$NODES show-graph --expected-components 2
+
+- name: wait-and-assert-split
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - $${OM}/kube-utils.sh mina-node-wait-for-epoch-slot deploy/prod2 $${NAMESPACE:-testnet} 0 10
+  - $${OM}/kube-utils.sh assert-different-history  deploy/prod2 $${NAMESPACE:-testnet} deploy/prod3 $${NAMESPACE:-testnet}
+
+
+- name: merge
+  image: openmina/mina-network-debugger:latest
+  environment:
+    URL: http://1.k8.openmina.com:31308
+  commands:
+  - topology-tool --url=$URL $$NODES show-graph --expected-components 2
   - topology-tool --url=$URL $$NODES disable-firewall # wait 30 minutes before disable firewall
   - sleep 120 && topology-tool --url=$URL $$NODES show-graph --expected-components 1
+
+- name: assert-no-split
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - $${OM}/kube-utils.sh mina-testnet-same-chain $${HEIGHT_WAIT_RETRIES} $${HEIGHT_WAIT_PERIOD} $${NAMESPACE:-testnet}
 
 ---
 
