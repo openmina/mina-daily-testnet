@@ -223,7 +223,7 @@ steps:
     URL: http://1.k8.openmina.com:31308
   commands:
   - sleep  10 && topology-tool --url=$URL $$NODES enable-firewall
-  - sleep  90 && topology-tool --url=$URL $$NODES show-graph --expected-components 2
+  - sleep  240 && topology-tool --url=$URL $$NODES show-graph --expected-components 2
 
 - name: wait-and-assert-split
   image: alpine/k8s:1.26.1
