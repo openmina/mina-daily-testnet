@@ -165,7 +165,7 @@ steps:
   commands:
   - export MINA_IMAGE="openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}"
   - $${OM}/deploy.sh deploy --producers --nodes --force -- $${HELM_ARGS}
-  - $${OM}/deploy.sh deploy --snark-workers --force -- --set=workerReplicas="$${SNARK_WORKERS:-96}" $${HELM_ARGS}
+  - $${OM}/deploy.sh deploy --snark-workers --force -- --set=workerReplicas="$${SNARK_WORKERS:-64}" $${HELM_ARGS}
   - $${OM}/update-frontend.sh -- --set=isVanilla=true
 
 - name: testnet-is-ready
