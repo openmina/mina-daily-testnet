@@ -156,7 +156,7 @@ steps:
 - name: log-snarker
   <<: *log
   environment:
-    NAME: snarker
+    NAME: snarker001
 
 - name: deploy-nodes
   image: alpine/k8s:1.26.1
@@ -165,7 +165,7 @@ steps:
   commands:
   - export MINA_IMAGE="openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}"
   - $${OM}/deploy.sh deploy --producers --nodes --force -- $${HELM_ARGS}
-  - $${OM}/deploy.sh deploy --snark-workers --force -- --set=workerReplicas="$${SNARK_WORKERS:-64}" $${HELM_ARGS}
+  - $${OM}/deploy.sh deploy --snark-workers --force -- $${HELM_ARGS}
   - $${OM}/update-frontend.sh -- --set=isVanilla=true
 
 - name: testnet-is-ready
@@ -186,7 +186,7 @@ clone:
 depends_on: [ deploy-to-cluster ]
 
 environment:
-  NODES: "--nodes=8 --snarkers=1 --prods=3 --prod0s=3 --seeds=2"
+  NODES: "--nodes=8 --snarkers=4 --prods=3 --prod0s=3 --seeds=2"
   OM: helm/openmina-config
 
 steps:
