@@ -128,21 +128,6 @@ steps:
   environment:
     NAME: seed1
 
-- name: deploy-seeds
-  image: alpine/k8s:1.26.1
-  environment:
-    KUBECONFIG: kube-config
-  commands:
-  - export MINA_IMAGE=openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
-  - $${OM}/deploy.sh deploy --seeds --force -- $${HELM_ARGS}
-
-- name: seeds-are-ready
-  image: alpine/k8s:1.26.1
-  environment:
-    KUBECONFIG: kube-config
-  commands:
-  - kubectl wait $${SEEDS_WAIT_RESOURCE} --for=condition=Available --timeout=$${SEEDS_WAIT_TIMEOUT}
-
 - name: log-node
   <<: *log
   environment:
@@ -164,6 +149,8 @@ steps:
     KUBECONFIG: kube-config
   commands:
   - export MINA_IMAGE="openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}"
+  - $${OM}/deploy.sh deploy --seeds --force -- $${HELM_ARGS}
+  - sleep 30 # handicap to other nodes so seed nodes to be up when they become needed
   - $${OM}/deploy.sh deploy --producers --nodes --force -- $${HELM_ARGS}
   - $${OM}/deploy.sh deploy --snark-workers --force -- $${HELM_ARGS}
   - $${OM}/update-frontend.sh -- --set=isVanilla=true
