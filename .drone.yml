@@ -95,15 +95,6 @@ steps:
   - echo "$DRONE_KUBECONFIG" > $${KUBECONFIG}
   - kubectl config set-context --current --namespace $${NAMESPACE:-testnet}
 
-- name: deployment-info
-  image: alpine/k8s:1.26.1
-  environment:
-    KUBECONFIG: kube-config
-  commands:
-  - PORT="$$($${OM}/kube-utils.sh frontend-port $${NAMESPACE:-testnet})"
-  - 'echo "Frontend: http://1.k8.openmina.com:$PORT"'
-  - 'echo "Namespace: $${NAMESPACE:-testnet}"'
-
 - name: delete-old-testnet
   image: alpine/k8s:1.26.1
   environment:
@@ -162,6 +153,21 @@ steps:
   commands:
   - $${OM}/kube-utils.sh mina-testnet-available $${NODES_WAIT_TIMEOUT}
   - $${OM}/kube-utils.sh mina-testnet-same-height $${HEIGHT_WAIT_RETRIES} $${HEIGHT_WAIT_PERIOD}
+
+- name: deployment-info
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - PORT="$$($${OM}/kube-utils.sh frontend-port $${NAMESPACE:-testnet})"
+  - 'echo "Frontend: http://1.k8.openmina.com:$PORT"'
+  - 'echo "Namespace: $${NAMESPACE:-testnet}"'
+  - echo
+  - 'echo Seed nodes: $(kubectl get pods -l role=seed -o name | wc -l)'
+  - 'echo Producer nodes: $(kubectl get pods -l role=block-producer -o name | wc -l)'
+  - 'echo Snark coordinator nodes: $(kubectl get pods -l role=snark-coordinator -o name | wc -l)'
+  - 'echo Snark worker nodes: $(kubectl get pods -l role=snark-worker -o name | wc -l)'
+  - 'echo Plain nodes: $(kubectl get pods -l role=plain-node -o name | wc -l)'
 
 ---
 
