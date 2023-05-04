@@ -194,14 +194,14 @@ steps:
   - echo "$DRONE_KUBECONFIG" > "$KUBECONFIG"
   - kubectl config set-context --current --namespace $${NAMESPACE:-testnet}
 
-- name: pre-split
+- name: single-component
   image: openmina/mina-network-debugger:latest
   environment:
     URL: http://1.k8.openmina.com:31308
   commands:
   - sleep  10 && topology-tool --url=$URL $$NODES show-graph --expected-components 1
 
-- name: split
+- name: enable-firewall
   image: openmina/mina-network-debugger:latest
   environment:
     URL: http://1.k8.openmina.com:31308
@@ -209,16 +209,22 @@ steps:
   - sleep  10 && topology-tool --url=$URL $$NODES enable-firewall
   - sleep  240 && topology-tool --url=$URL $$NODES show-graph --expected-components 2
 
-- name: wait-and-assert-split
+- name: wait-slot-0-10
   image: alpine/k8s:1.26.1
   environment:
     KUBECONFIG: kube-config
   commands:
   - $${OM}/kube-utils.sh mina-node-wait-for-epoch-slot deploy/prod2 $${NAMESPACE:-testnet} 0 10
+
+- name: blockchain-split
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
   - $${OM}/kube-utils.sh assert-different-history  deploy/prod2 $${NAMESPACE:-testnet} deploy/prod3 $${NAMESPACE:-testnet}
 
 
-- name: merge
+- name: disable-firewall
   image: openmina/mina-network-debugger:latest
   environment:
     URL: http://1.k8.openmina.com:31308
@@ -227,7 +233,7 @@ steps:
   - topology-tool --url=$URL $$NODES disable-firewall # wait 30 minutes before disable firewall
   - sleep 240 && topology-tool --url=$URL $$NODES show-graph --expected-components 1
 
-- name: assert-no-split
+- name: blockchain-merged
   image: alpine/k8s:1.26.1
   environment:
     KUBECONFIG: kube-config
