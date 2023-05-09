@@ -172,15 +172,25 @@ steps:
 ---
 
 kind: pipeline
-name: split-network
+name: split-load
 type: docker
 clone:
   disable: true
 depends_on: [ deploy-to-cluster ]
 
 environment:
+  SUFFIX: ${DRONE_BUILD_NUMBER}
   NODES: "--nodes=8 --snarkers=4 --prods=3 --prod0s=3 --seeds=2"
   OM: helm/openmina-config
+
+defs:
+- &log
+  image: alpine/k8s:1.26.1
+  detach: true
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - while ! kubectl logs $${NAME}-$${SUFFIX} --follow; do echo "waiting for $${NAME}-$${SUFFIX} to start..."; sleep 10; done
 
 steps:
 
@@ -215,6 +225,33 @@ steps:
   - sleep  10 && topology-tool --url=$URL $$NODES enable-firewall
   - sleep  240 && topology-tool --url=$URL $$NODES show-graph --expected-components 2 > /dev/null
 
+- name: log-server
+  <<: *log
+  environment:
+    NAME: deploy/zkapp-server
+
+- name: log-generate
+  <<: *log
+  environment:
+    NAME: job/zkapp-generate
+
+- name: log-send
+  <<: *log
+  environment:
+    NAME: job/zkapp-send
+
+- name: send-zkapp-txs
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - helm install zkapp-server-$${SUFFIX} helm/zkapps/server --set=suffix=$${SUFFIX}
+  - kubectl wait deploy/zkapp-server-$${SUFFIX} --for=condition=available --timeout=1m
+  - helm install zkapp-generate-$${SUFFIX} helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-4} --set=suffix=$${SUFFIX}
+  - kubectl wait job/zkapp-generate-$${SUFFIX} --for=condition=complete --timeout=20m
+  - helm install zkapp-send-$${SUFFIX} helm/zkapps/send --set=count=$${ZK_COUNT:-256} --set=workers=$${ZK_WORKERS:-4} --set=suffix=$${SUFFIX}
+  - kubectl wait job/zkapp-send-$${SUFFIX} --for=condition=complete --timeout=20m
+
 - name: wait-slot-0-10
   image: alpine/k8s:1.26.1
   environment:
@@ -228,7 +265,6 @@ steps:
     KUBECONFIG: kube-config
   commands:
   - $${OM}/kube-utils.sh assert-different-history  deploy/prod2 $${NAMESPACE:-testnet} deploy/prod3 $${NAMESPACE:-testnet}
-
 
 - name: disable-firewall
   image: openmina/mina-network-debugger:latest
@@ -246,56 +282,28 @@ steps:
   commands:
   - $${OM}/kube-utils.sh mina-testnet-same-chain $${SAME_CHAIN_WAIT_RETRIES:-20} $${SAME_CHAIN_WAIT_PERIOD:-60} $${NAMESPACE:-testnet}
 
----
-
-kind: pipeline
-name: run-zkapps
-type: docker
-clone:
-  disable: true
-depends_on: [ deploy-to-cluster ]
-
-environment:
-  # path to openmina tooling
-  OM: helm/openmina-config
-  RELEASE_NAME: zkapps-drone-${DRONE_BUILD_NUMBER}
-  SUFFIX: ${DRONE_BUILD_NUMBER}
-
-steps:
-
-- name: clone
-  image: alpine/git
-  commands:
-  - git clone $${OPENMINA_REPO:-https://github.com/openmina/mina} --depth 1 -b $${OPENMINA_BRANCH:-openmina-legacy-snark-workers} .
-
-- name: configure
-  image: alpine/k8s:1.26.1
+- name: log-wait
+  <<: *log
   environment:
-    DRONE_KUBECONFIG:
-      from_secret: k8s_config
-    KUBECONFIG: kube-config
-  commands:
-  - umask 0077
-  - echo "$DRONE_KUBECONFIG" > "$KUBECONFIG"
-  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet}
+    NAME: job/zkapp-wait
 
-
-- name: start
+- name: wait-zkapp-txs
   image: alpine/k8s:1.26.1
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install $${RELEASE_NAME} helm/zkapps --set=job=$${ZK_JOB:-sign-x4} --set=count=$${ZK_COUNT:-1024} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX}
-  - |
-    for t in $(seq 10); do
-        kubectl logs jobs/zkapp-worker-$${SUFFIX} --container=worker --follow && exit
-        echo "Waiting for worker container..."
-        sleep 5
-    done
-    echo "Failed to wait for worker container"
-    exit
-  - $${OM}/kube-utils.sh wait-for-job-status job/zkapp-worker-$${SUFFIX} 60m
-  - helm delete $${RELEASE_NAME}
+  - helm install zkapp-wait-$${SUFFIX} helm/zkapps/wait --set=suffix=$${SUFFIX}
+  - kubectl wait job/zkapp-wait-$${SUFFIX} --for=condition=complete --timeout=180m
+
+- name: cleanup-zkapp
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - helm delete zkapp-server-$${SUFFIX} || true
+  - helm delete zkapp-generate-$${SUFFIX} || true
+  - helm delete zkapp-send-$${SUFFIX} || true
+  - helm delete zkapp-wait-$${SUFFIX} || true
 
 ---
 kind: pipeline
@@ -303,7 +311,7 @@ name: finish
 type: docker
 clone:
   disable: true
-depends_on: [ run-zkapps ]
+depends_on: [ split-load ]
 
 environment:
   # path to openmina tooling
