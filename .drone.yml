@@ -248,7 +248,7 @@ steps:
   - helm install zkapp-server-$${SUFFIX} helm/zkapps/server --set=suffix=$${SUFFIX}
   - kubectl wait deploy/zkapp-server-$${SUFFIX} --for=condition=available --timeout=1m
   - helm install zkapp-generate-$${SUFFIX} helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX}
-  - kubectl wait job/zkapp-generate-$${SUFFIX} --for=condition=complete --timeout=9m
+  - kubectl wait job/zkapp-generate-$${SUFFIX} --for=condition=complete --timeout=30m
   - helm install zkapp-send-$${SUFFIX} helm/zkapps/send --set=count=$${ZK_COUNT:-128} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX}
   - kubectl wait job/zkapp-send-$${SUFFIX} --for=condition=complete --timeout=30m
 
