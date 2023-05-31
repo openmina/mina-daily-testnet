@@ -108,6 +108,8 @@ steps:
         echo "Workaround for pods left running, force-delete pods $$PODS"
         kubectl delete --force pods $${PODS} || true
     fi
+  - helm delete zkapp-server-continuous --wait --timeout=1m || true
+  - helm delete zkapp-send-continuous --wait --timeout=5m || true
 
 - name: prepare-deamon-json
   image: alpine/k8s:1.26.1
@@ -297,6 +299,10 @@ steps:
 
 - name: cleanup-zkapp
   image: alpine/k8s:1.26.1
+  when:
+    status:
+    - failure
+    - success
   environment:
     KUBECONFIG: kube-config
   commands:
@@ -357,3 +363,45 @@ steps:
   image: busybox
   commands:
   - echo "Done"
+
+---
+
+kind: pipeline
+name: continuous-load
+type: docker
+clone:
+  disable: true
+depends_on: [ finish ]
+
+environment:
+  OM: helm/openmina-config
+
+steps:
+
+- name: clone
+  image: alpine/git
+  commands:
+  - git clone $${OPENMINA_REPO:-https://github.com/openmina/mina} --depth 1 -b $${OPENMINA_BRANCH:-openmina-legacy-snark-workers} .
+
+- name: configure
+  image: alpine/k8s:1.26.1
+  environment:
+    DRONE_KUBECONFIG:
+      from_secret: k8s_config
+    KUBECONFIG: kube-config
+  commands:
+  - umask 0077
+  - echo "$DRONE_KUBECONFIG" > "$KUBECONFIG"
+  - kubectl config set-context --current --namespace $${NAMESPACE:-testnet}
+
+- name: send-zkapp-txs
+  image: alpine/k8s:1.26.1
+  environment:
+    KUBECONFIG: kube-config
+  commands:
+  - helm install zkapp-server-continuous helm/zkapps/server --set=suffix=continuous
+  - kubectl wait deploy/zkapp-server-continuous --for=condition=available --timeout=1m
+  - helm install zkapp-generate-continuous helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=continuous
+  - kubectl wait job/zkapp-generate-continuous --for=condition=complete --timeout=30m
+  - helm delete zkapp-generate-continuous --wait --timeout=5m
+  - helm install zkapp-send-continuous helm/zkapps/send --set=count=0 --set=workers=$${ZK_WORKERS:-8} --set=suffix=continuous --set=continuous=true
