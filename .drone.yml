@@ -142,6 +142,7 @@ steps:
     KUBECONFIG: kube-config
   commands:
   - export MINA_IMAGE="openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}"
+  - HELM_ARGS="--set=healthcheck.failureThreshold=1800 $${HELM_ARGS}"
   - $${OM}/deploy.sh deploy --seeds --force -- $${HELM_ARGS}
   - sleep 30 # handicap to other nodes so seed nodes to be up when they become needed
   - $${OM}/deploy.sh deploy --producers --nodes --force -- $${HELM_ARGS}
