@@ -185,6 +185,7 @@ environment:
   SUFFIX: ${DRONE_BUILD_NUMBER}
   NODES: "--nodes=8 --snarkers=4 --prods=3 --prod0s=3 --seeds=2"
   OM: helm/openmina-config
+  ZKAPP_IMAGE: "akoptelov/mina-load-generator"
 
 defs:
 - &log
