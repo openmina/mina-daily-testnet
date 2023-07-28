@@ -248,11 +248,11 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install zkapp-server-$${SUFFIX} helm/zkapps/server --set=suffix=$${SUFFIX}
+  - helm install zkapp-server-$${SUFFIX} helm/zkapps/server --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}}
   - kubectl wait deploy/zkapp-server-$${SUFFIX} --for=condition=available --timeout=1m
-  - helm install zkapp-generate-$${SUFFIX} helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX}
+  - helm install zkapp-generate-$${SUFFIX} helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}}
   - kubectl wait job/zkapp-generate-$${SUFFIX} --for=condition=complete --timeout=30m
-  - helm install zkapp-send-$${SUFFIX} helm/zkapps/send --set=count=$${ZK_COUNT:-128} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX}
+  - helm install zkapp-send-$${SUFFIX} helm/zkapps/send --set=count=$${ZK_COUNT:-128} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}}
   - kubectl wait job/zkapp-send-$${SUFFIX} --for=condition=complete --timeout=30m
 
 - name: wait-slot-0-10
@@ -295,7 +295,7 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install zkapp-wait-$${SUFFIX} helm/zkapps/wait --set=suffix=$${SUFFIX}
+  - helm install zkapp-wait-$${SUFFIX} helm/zkapps/wait --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}}
   - kubectl wait job/zkapp-wait-$${SUFFIX} --for=condition=complete --timeout=180m
 
 - name: cleanup-zkapp
