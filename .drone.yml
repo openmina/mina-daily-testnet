@@ -186,6 +186,7 @@ environment:
   NODES: "--nodes=8 --snarkers=4 --prods=3 --prod0s=3 --seeds=2"
   OM: helm/openmina-config
   ZKAPP_IMAGE: "akoptelov/mina-load-generator"
+  ZKAPP_TAG: "develop-snarkyjs"
 
 defs:
 - &log
@@ -249,11 +250,11 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install zkapp-server-$${SUFFIX} helm/zkapps/server --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}}
+  - helm install zkapp-server-$${SUFFIX} helm/zkapps/server --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
   - kubectl wait deploy/zkapp-server-$${SUFFIX} --for=condition=available --timeout=1m
-  - helm install zkapp-generate-$${SUFFIX} helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}}
+  - helm install zkapp-generate-$${SUFFIX} helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
   - kubectl wait job/zkapp-generate-$${SUFFIX} --for=condition=complete --timeout=30m
-  - helm install zkapp-send-$${SUFFIX} helm/zkapps/send --set=count=$${ZK_COUNT:-128} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}}
+  - helm install zkapp-send-$${SUFFIX} helm/zkapps/send --set=count=$${ZK_COUNT:-128} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
   - kubectl wait job/zkapp-send-$${SUFFIX} --for=condition=complete --timeout=30m
 
 - name: wait-slot-0-10
@@ -296,7 +297,7 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install zkapp-wait-$${SUFFIX} helm/zkapps/wait --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}}
+  - helm install zkapp-wait-$${SUFFIX} helm/zkapps/wait --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
   - kubectl wait job/zkapp-wait-$${SUFFIX} --for=condition=complete --timeout=180m
 
 - name: cleanup-zkapp
@@ -377,6 +378,8 @@ depends_on: [ finish ]
 
 environment:
   OM: helm/openmina-config
+  ZKAPP_IMAGE: "akoptelov/mina-load-generator"
+  ZKAPP_TAG: "develop-snarkyjs"
 
 steps:
 
@@ -401,9 +404,9 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install zkapp-server-continuous helm/zkapps/server --set=suffix=continuous
+  - helm install zkapp-server-continuous helm/zkapps/server --set=suffix=continuous $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
   - kubectl wait deploy/zkapp-server-continuous --for=condition=available --timeout=1m
-  - helm install zkapp-generate-continuous helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=continuous
+  - helm install zkapp-generate-continuous helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=continuous $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
   - kubectl wait job/zkapp-generate-continuous --for=condition=complete --timeout=30m
   - helm delete zkapp-generate-continuous --wait --timeout=5m
-  - helm install zkapp-send-continuous helm/zkapps/send --set=count=0 --set=workers=$${ZK_WORKERS:-8} --set=suffix=continuous --set=continuous=true
+  - helm install zkapp-send-continuous helm/zkapps/send --set=count=0 --set=workers=$${ZK_WORKERS:-8} --set=suffix=continuous --set=continuous=true $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
