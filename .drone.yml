@@ -1,53 +1,11 @@
 ---
 kind: pipeline
-name: build-image
-type: docker
-clone:
-  disable: true
-
-environment:
-  OPENMINA_BRANCH: openmina-legacy-snark-workers
-
-steps:
-
-- name: clone
-  image: alpine/git
-  commands:
-  - git clone $${MINA_REPO:-https://github.com/MinaProtocol/mina} --depth 1 -b $${MINA_BRANCH:-develop} .
-
-- name: prepare-dockerfiles
-  image: busybox:latest
-  commands:
-  - wget https://github.com/openmina/mina/raw/$${OPENMINA_BRANCH}/dockerfiles/stages/99-openmina-tail -O dockerfiles/stages/99-openmina-tail
-  - sed -i -e "s/zlib1g-dev/zlib1g-dev jq/" dockerfiles/stages/1-build-deps
-  - for f in 1-build-deps 2-opam-deps 3-builder 99-openmina-tail; do cat dockerfiles/stages/$$f; done > ./dockerfiles/stages/merged
-  - echo "!dockerfiles/scripts/healthcheck-utilities.sh" >> .dockerignore
-
-- name: publish-image
-  image: plugins/docker
-  settings:
-    build_args:
-    - MINA_BRANCH=${MINA_BRANCH:-develop}
-    - MINA_REPO=${MINA_REPO:-https://github.com/MinaProtocol/mina}
-    dockerfile: ./dockerfiles/stages/merged
-    password:
-      from_secret: docker_hub_password
-    repo: openmina/mina
-    tags:
-    - mina-daily-${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}
-    - mina-daily-${MINA_BRANCH:-develop}-latest
-    username:
-      from_secret: docker_hub_username
-    cache_from: ${CACHE_IMAGE}
-
----
-kind: pipeline
 name: deploy-to-cluster
 type: docker
 clone:
   disable: true
-depends_on:
-- build-image
+# depends_on:
+# - build-image
 
 
 environment:
@@ -141,7 +99,8 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - export MINA_IMAGE="openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}"
+  # - export MINA_IMAGE="openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}"
+  - export MINA_IMAGE="minaprotocol/mina-daemon:2.0.0rampup4-14047c5-buster-berkeley"
   - HELM_ARGS="--set=healthcheck.failureThreshold=1800 $${HELM_ARGS}"
   - $${OM}/deploy.sh deploy --seeds --force -- $${HELM_ARGS}
   - sleep 30 # handicap to other nodes so seed nodes to be up when they become needed
@@ -186,7 +145,7 @@ environment:
   NODES: "--nodes=8 --snarkers=4 --prods=3 --prod0s=3 --seeds=2"
   OM: helm/openmina-config
   ZKAPP_IMAGE: "akoptelov/mina-load-generator"
-  ZKAPP_TAG: "develop-snarkyjs"
+  ZKAPP_TAG: "f925cee1"
 
 defs:
 - &log
@@ -379,7 +338,7 @@ depends_on: [ finish ]
 environment:
   OM: helm/openmina-config
   ZKAPP_IMAGE: "akoptelov/mina-load-generator"
-  ZKAPP_TAG: "develop-snarkyjs"
+  ZKAPP_TAG: "f925cee1"
 
 steps:
 
