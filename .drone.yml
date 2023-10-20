@@ -100,7 +100,7 @@ steps:
     KUBECONFIG: kube-config
   commands:
   # - export MINA_IMAGE="openmina/mina:mina-daily-$${MINA_BRANCH:-develop}-${DRONE_BUILD_NUMBER}"
-  - export MINA_IMAGE="minaprotocol/mina-daemon:2.0.0rampup4-14047c5-buster-berkeley"
+  - export MINA_IMAGE="minaprotocol/mina-daemon:2.0.0rampup5-55b7818-buster-berkeley"
   - HELM_ARGS="--set=healthcheck.failureThreshold=1800 $${HELM_ARGS}"
   - $${OM}/deploy.sh deploy --seeds --force -- $${HELM_ARGS}
   - sleep 30 # handicap to other nodes so seed nodes to be up when they become needed
@@ -144,8 +144,8 @@ environment:
   SUFFIX: ${DRONE_BUILD_NUMBER}
   NODES: "--nodes=8 --snarkers=4 --prods=3 --prod0s=3 --seeds=2"
   OM: helm/openmina-config
-  ZKAPP_IMAGE: "akoptelov/mina-load-generator"
-  ZKAPP_TAG: "f925cee1"
+  ZKAPP_IMAGE: "openmina/mina-load-generator"
+  ZKAPP_TAG: "old-generator"
 
 defs:
 - &log
@@ -209,12 +209,9 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install zkapp-server-$${SUFFIX} helm/zkapps/server --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
-  - kubectl wait deploy/zkapp-server-$${SUFFIX} --for=condition=available --timeout=1m
-  - helm install zkapp-generate-$${SUFFIX} helm/zkapps/generate --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
-  - kubectl wait job/zkapp-generate-$${SUFFIX} --for=condition=complete --timeout=30m
-  - helm install zkapp-send-$${SUFFIX} helm/zkapps/send --set=count=$${ZK_COUNT:-128} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
-  - kubectl wait job/zkapp-send-$${SUFFIX} --for=condition=complete --timeout=30m
+  - helm install zkapp-server-$${SUFFIX} helm/zkapps/server --wait --timeout=1m --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
+  - helm install zkapp-generate-$${SUFFIX} helm/zkapps/generate --wait-for-jobs --timeout=30m --set=loadKind=$${ZK_JOB:-sign-x4} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
+  - helm install zkapp-send-$${SUFFIX} helm/zkapps/send --wait-for-jobs --timeout=30m --set=count=$${ZK_COUNT:-128} --set=workers=$${ZK_WORKERS:-8} --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
 
 - name: wait-slot-0-10
   image: alpine/k8s:1.26.1
@@ -238,6 +235,8 @@ steps:
   - topology-tool --url=$URL $$NODES show-graph --expected-components 2 > /dev/null
   - topology-tool --url=$URL $$NODES disable-firewall
   - sleep 240 && topology-tool --url=$URL $$NODES show-graph --expected-components 1 > /dev/null
+  when:
+    status: [ failure, success ]
 
 - name: blockchain-merged
   image: alpine/k8s:1.26.1
@@ -256,11 +255,10 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm install zkapp-wait-$${SUFFIX} helm/zkapps/wait --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
-  - kubectl wait job/zkapp-wait-$${SUFFIX} --for=condition=complete --timeout=180m
+  - helm install zkapp-wait-$${SUFFIX} helm/zkapps/wait --wait-for-jobs --timeout=180m --set=suffix=$${SUFFIX} $${ZKAPP_IMAGE:+--set=repository=$${ZKAPP_IMAGE}} $${ZKAPP_TAG:+--set=tag=$${ZKAPP_TAG}}
 
 - name: cleanup-zkapp
-  image: alpine/k8s:1.26.1
+  image: alpine/k8s:1.28.2
   when:
     status:
     - failure
@@ -268,10 +266,9 @@ steps:
   environment:
     KUBECONFIG: kube-config
   commands:
-  - helm delete zkapp-server-$${SUFFIX} || true
-  - helm delete zkapp-generate-$${SUFFIX} || true
-  - helm delete zkapp-send-$${SUFFIX} || true
-  - helm delete zkapp-wait-$${SUFFIX} || true
+  - helm delete --ignore-not-found  zkapp-server-$${SUFFIX} zkapp-generate-$${SUFFIX} zkapp-send-$${SUFFIX} zkapp-wait-$${SUFFIX}
+  when:
+    status: [ failure, success ]
 
 ---
 kind: pipeline
@@ -337,8 +334,8 @@ depends_on: [ finish ]
 
 environment:
   OM: helm/openmina-config
-  ZKAPP_IMAGE: "akoptelov/mina-load-generator"
-  ZKAPP_TAG: "f925cee1"
+  ZKAPP_IMAGE: "openmina/mina-load-generator"
+  ZKAPP_TAG: "old-generator"
 
 steps:
 
